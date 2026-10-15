@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <!-- saved from url=(0035)https://samermagdy1.github.io/Test/ -->
 <html lang="ar" dir="rtl" data-theme="dark"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   
@@ -12917,7 +12917,7 @@
     }
     function clearCart() {
       if (!cart.length) return;
-      openConfirm('مسح الطلب', 'هل تريد مسح الطلب الحالي؟', () => { cart = []; renderCart(); });
+      openConfirm('مسح الطلب', 'هل تريد مسح الطلب الحالي؟', () => { resetPOSForNewOrder(); });
     }
     function renderCart() {
       const container = document.getElementById('cart-items');
@@ -13152,12 +13152,7 @@
       showToast('success', t('orderDone'));
       spawnConfetti();
       printInvoice(invoice, printLang);
-      cart = [];
-      document.getElementById('order-disc-val').value = '';
-      if (tblSel) tblSel.value = '';
-      const _pc = document.getElementById('pay-currency'); if (_pc) _pc.value = '';
-      const _pr = document.getElementById('pay-rate'); if (_pr) _pr.value = '';
-      renderCart();
+      resetPOSForNewOrder({ view: true }); // شاشة كاشير نظيفة تماماً لطلب جديد
       renderInvoices();
       invRefreshViews(); invAfterSaleAlerts(_stockAlerts);
       // Reactively update dashboard stats (even if not on dashboard page)
@@ -15103,6 +15098,48 @@ document.addEventListener('keydown', function(e){
     // إصلاح: حفظ مرجع عنصر «السلة فارغة» قبل أن يُستبدل محتوى #cart-items (انظر renderCart)
     const _cartEmptyEl = document.getElementById('cart-empty');
 
+
+    // ══════════════════════════════════════════
+    //  POS — إعادة ضبط الشاشة لطلب جديد
+    //  تُستدعى بعد إتمام الطلب وطباعة الفاتورة (opts.view=true)،
+    //  وعند «مسح الطلب» يدوياً (بدون مسح البحث/التصنيف).
+    //  كل خطوة معزولة بـ try/catch حتى لا تُبقي خطوةٌ فاشلة بقايا من الطلب السابق.
+    // ══════════════════════════════════════════
+    function resetPOSForNewOrder(opts) {
+      opts = opts || {};
+      const el = id => document.getElementById(id);
+      const step = fn => { try { fn(); } catch (e) { console.error('resetPOSForNewOrder:', e); } };
+
+      step(() => { cart = []; });
+      // خصم الطلب (القيمة والنوع) وطريقة الدفع → الوضع الافتراضي
+      step(() => { const d = el('order-disc-val'); if (d) d.value = ''; });
+      step(() => setDiscType('pct'));
+      step(() => setPM('cash'));
+      // الطاولة وتحويل عملة الدفع
+      step(() => { const t = el('pos-table-sel'); if (t) t.value = ''; });
+      step(() => { ['pay-currency', 'pay-rate'].forEach(id => { const e = el(id); if (e) e.value = ''; }); });
+
+      if (opts.view) {
+        step(() => { const s = el('pos-search'); if (s) s.value = ''; });          // نص البحث
+        step(() => { currentCatFilter = 'all'; renderPOSCats(); });                // عرض كل التصنيفات
+        step(() => {                                                              // إغلاق درج السلة على الموبايل
+          const p = document.querySelector('.pos-cart-panel'); if (p) p.classList.remove('cart-open');
+          const l = el('mobile-cart-lbl'); if (l) l.textContent = 'الطلب';
+        });
+      }
+
+      step(() => renderCart());
+      // ضمان نهائي: لا يبقى أي صنف قديم ظاهراً في لوحة السلة، وتظهر حالة «السلة فارغة»
+      step(() => {
+        const box = el('cart-items'); if (!box) return;
+        box.querySelectorAll('.cart-item').forEach(n => n.remove());
+        const empty = el('cart-empty') || _cartEmptyEl;
+        if (empty) { if (!box.contains(empty)) box.appendChild(empty); empty.style.display = ''; }
+        box.scrollTop = 0;
+      });
+      step(() => renderPOSItems((el('pos-search') || {}).value || ''));
+      step(() => calcCart());
+    }
     // ══════════════════════════════════════════════════════════════
     //  INVENTORY MODULE — المخزن / رصيد المقهى / التحويلات / الجرد
     //  كل تغيير في الأرصدة يمر عبر invMove() ويُسجَّل كحركة في الدفتر
